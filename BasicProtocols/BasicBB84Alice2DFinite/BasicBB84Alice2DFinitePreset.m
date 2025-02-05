@@ -7,18 +7,17 @@ qkdInput = QKDSolverInput();
 %% Parameters
 
 %Add loss
-% lossdB = linspace(0,17,36);
-qkdInput.addScanParameter("alpha",num2cell(linspace(1.01,1.5,50)));
-% transmittance = 10.^(-lossdB/10);
-% qkdInput.addScanParameter("transmittance", num2cell(transmittance));
+lossdB = linspace(0,4,9);
+% qkdInput.addScanParameter("alpha",num2cell(linspace(1.01,1.5,50)));
+transmittance = 10.^(-lossdB/10);
+qkdInput.addScanParameter("transmittance", num2cell(transmittance));
 
-%qkdInput.addScanParameter("numSignals",num2cell(10.^linspace(4,15,12)));
 qkdInput.addFixedParameter("pz",1/2);
 qkdInput.addFixedParameter("fEC",1.2); %efficiency of error-correction.
 
 qkdInput.addFixedParameter("depolarization",0.01);
-qkdInput.addFixedParameter("transmittance",1);
-% qkdInput.addFixedParameter("alpha",  1.002);
+% qkdInput.addFixedParameter("transmittance",1);
+qkdInput.addFixedParameter("alpha",  1.06);
 
 
 %finite size parameters.
