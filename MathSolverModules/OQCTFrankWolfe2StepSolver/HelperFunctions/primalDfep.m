@@ -1,4 +1,4 @@
-function Dfval = primalDfep(perturbation, rho, keyProj, krausOperators,safeCutOff)
+function Dfval = primalDfep(perturbation, alpha, rho, keyProj, krausOperators,safeCutOff)
 % primalDfep Computes the value [nabla f_epsilon(rho)], where the epsilon
 % value is carefully chosen perturbation. To ensure the gradient exists
 % (use perturbationChannelEpsilon). The gradient follows the numerator
@@ -15,12 +15,13 @@ function Dfval = primalDfep(perturbation, rho, keyProj, krausOperators,safeCutOf
 % * Dfval: The value of the gradient at the given value of rho. This uses
 %   numerator convention.
 %
-% See also primalDf, primalfep, FW2StepSolver
+% See also primalDf, primalfep, FW2StepSolver, perturbationChannelEpsilon
 arguments
     %minimial checks just to make sure cells are formatted in the correct
     %orientation.
-    perturbation (1,1) double {mustBeInRange(perturbation,0,1)}
-    rho (:,:) double {mustBeHermitian}
+    perturbation (1,1) double
+    alpha (1,1) double
+    rho (:,:) double {mustBeHermitian,mustFollowPerturbationTheorem(perturbation,rho)}
     keyProj (:,1) cell %checks are too complex for this.
     krausOperators (:,1) cell %checks are too complex for this.
     safeCutOff (1,1) double {mustBePositive} = 1e-14;
@@ -37,8 +38,10 @@ logGRho = perturbationChannel(logmsafe(gRho,safeCutOff), perturbation);
 logZRho = perturbationChannel(logmsafe(zRho,safeCutOff), perturbation);
 
 %Apply G^\dagger
-Dfval = ApplyMap(logGRho-logZRho,DualMap(krausOperators));
-
+% Dfval = ApplyMap(logGRho-logZRho,DualMap(krausOperators));
+Dfval = GradRenyiEntropy(alpha, gRho, zRho, krausOperators,keyProj);
+% Dfval = ApplyMap(finite_diff(gRho,zRho,keyProj,alpha),
+% DualMap(krausOperators)); %Finite difference for sanity check
 % ensure Dfval is hermitian
 Dfval = (Dfval+Dfval')/2;
 end

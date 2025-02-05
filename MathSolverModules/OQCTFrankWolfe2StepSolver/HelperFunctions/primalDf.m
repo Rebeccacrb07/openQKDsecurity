@@ -1,4 +1,4 @@
-function dfval = primalDf(rho,keyProj,krausOperators)
+function dfval = primalDf(rho,keyProj,krausOperators, alpha)
 % primalDf Computes the gradient of the primal problem's objective
 % function. The Gradiant follows the numerator convention for matrix
 % derivatives.
@@ -20,6 +20,7 @@ arguments
     rho (:,:) double {mustBeHermitian}
     keyProj (:,1) cell
     krausOperators (:,1) cell
+    alpha (1,1) double
 end
 
 %Apply the G map and pinching Channel
@@ -39,7 +40,11 @@ logGRho = perturbationChannel(logm(gRho),perturbation);
 logZRho = perturbationChannel(logm(zRho),perturbation);
 
 % apply the logs and inverse G map.
-dfval = ApplyMap(logGRho-logZRho,DualMap(krausOperators));
+% dfval = ApplyMap(logGRho-logZRho,DualMap(krausOperators));
 
+dfval = GradRenyiEntropy(alpha, gRho, zRho, krausOperators,keyProj);
+% dfval =
+% ApplyMap(finite_diff(gRho,zRho,keyProj,alpha),DualMap(krausOperators));
+% %Finite difference for sanity check
 dfval = (dfval+dfval')/2; %remove any odd anti-Hermitian bits
 end

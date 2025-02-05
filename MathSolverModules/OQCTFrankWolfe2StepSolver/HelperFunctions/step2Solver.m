@@ -1,4 +1,4 @@
-function lowerBound = step2Solver(rho,eqCons,ineqCons,vec1NormCons,mat1NormCons,krausOps,keyProj,options,debugInfo)
+function lowerBound = step2Solver(rho,eqCons,ineqCons,vec1NormCons,mat1NormCons,krausOps,keyProj,alpha,options,debugInfo)
 % Part of the FW2StepSolver. Don't use or touch this if you don't know what
 % that means.
 %
@@ -12,6 +12,7 @@ arguments
     mat1NormCons (:,1) MatrixOneNormConstraint
     krausOps (:,1) cell
     keyProj (:,1) cell
+    alpha (1,1) double
     options (1,1) struct
     debugInfo (1,1) DebugInfo
 end
@@ -20,11 +21,11 @@ end
 [perturbation,safeCutOff] = computePerturbationEpsilon(rho, krausOps, keyProj);
 debugInfo.storeInfo("perturbationValue",perturbation);
 
-% 2. Calculate f_epsilon_p(rho) and its gradient at the same point.
-fval = primalfep(perturbation, rho, keyProj, krausOps,safeCutOff);
+% 2. Calculate f_epsilon_p(rho) and gradftranspose of that
+fval = primalfep(perturbation, alpha, rho, keyProj, krausOps,safeCutOff);
 debugInfo.storeInfo("relEntStep2Linearization",fval/log(2));
 
-gradf = primalDfep(perturbation, rho, keyProj, krausOps,safeCutOff); % numerator form
+gradf = primalDfep(perturbation, alpha, rho, keyProj, krausOps,safeCutOff); % numerator form
 
 
 % begin calculating lower bound
@@ -37,12 +38,16 @@ debugInfo.storeInfo("dualSolution",dualSolution/log(2));
 % compute key rate lower bound from the result of step 2
 beta = dualSolution + fval - real(trace(gradf*rho)); %real() deals with small numerical instability
 
-% Because f(maxMixed) = 0, we can use convex arguments to get
-% f_\epsilon(\rho)/(1-\epsilon) \leq f(\rho)$. This is way cleaner than
-% other perturbation bounds
+% We compute the penalty zetaEp due to pertubation
+if perturbation == 0
+    zetaEp = 0; %limit as perturbation -> 0
+else
+    dimOut = size(krausOps{1},1);
+    zetaEp = 2 * 2*perturbation*(dimOut-1)/dimOut...
+        *log(dimOut^2/(2*perturbation*(dimOut-1)));
+end
 
-
-lowerBound = beta/(1-perturbation);
+lowerBound = beta - zetaEp;
 end
 
 %% Other Functions

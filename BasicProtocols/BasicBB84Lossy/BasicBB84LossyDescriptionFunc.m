@@ -54,9 +54,7 @@ options = optionsParser.Results;
 %% module parser
 %Parsing parameters for the module
 modParser = moduleParser(mfilename);
-modParser.addRequiredParam("pz", ...
-    @isscalar, ...
-    @(x) mustBeInRange(x,0,1));
+modParser.addRequiredParam("pz",@(x) mustBeInRange(x,0,1));
 modParser.parse(params)
 params = modParser.Results;
 
@@ -122,6 +120,9 @@ newParams.observablesJoint = observablesJoint;
 
 krausOpZ = pz*kron(diag([1,0])+diag([0,1]),kron(diag([1,1,0]),zket(2,1)));
 krausOpX = (1-pz)*kron(zket(2,1)*ketP'+zket(2,2)*ketM',kron(diag([1,1,0]),zket(2,2)));
+% krausOps = {krausOpZ,krausOpX};
+% krausOpZ = pz*kron(kron(zket(2,1),diag([1,0]))+kron(zket(2,2),diag([0,1])),kron(diag([1,1,0]),zket(2,1)));
+% krausOpX = (1-pz)*(1/2)*kron(kron(zket(2,1),[[1,1];[1,1]])+kron(zket(2,2),[[1,-1];[-1,1]]),kron(diag([1,1,0]),zket(2,2)));
 krausOps = {krausOpZ,krausOpX};
 
 krausSum = 0;

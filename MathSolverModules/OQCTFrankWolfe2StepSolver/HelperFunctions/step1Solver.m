@@ -1,4 +1,4 @@
-function [rho, fval, gap] = step1Solver(rho0,eqCons,ineqCons,vec1NormCons,mat1NormCons,krausOps,keyProj,options,debugInfo)
+function [rho, fval, gap] = step1Solver(rho0,eqCons,ineqCons,vec1NormCons,mat1NormCons,krausOps,keyProj,alpha,options,debugInfo)
 % Part of the FW2StepSolver. Don't use or touch this if you don't know what
 % that means.
 %
@@ -12,6 +12,7 @@ arguments
     mat1NormCons (:,1) MatrixOneNormConstraint
     krausOps (:,1) cell
     keyProj (:,1) cell
+    alpha (1,1) double
     options (1,1) struct
     debugInfo (1,1) DebugInfo
 end
@@ -41,7 +42,7 @@ end
 %ensure rho is expressed in full, and not as a sparse matrix
 rho = full(rho);
 %calculate initial value
-fval = primalf(rho,keyProj,krausOps);
+fval = primalf(rho,keyProj,krausOps,alpha);
 
 subproblemStatus = string.empty();
 debugInfo.storeInfo("subproblemStatus",subproblemStatus);
@@ -64,7 +65,7 @@ for iter = 1:options.maxIter
     end
     
     %Caluclate gradient of primal
-    gradf = primalDf(rho,keyProj,krausOps); % numerator form
+    gradf = primalDf(rho,keyProj,krausOps, alpha); % numerator form
 
     %Find step direction
     [deltaRho,cvxStatus] = subproblem(rho,gradf,eqCons,ineqCons,...
@@ -83,13 +84,13 @@ for iter = 1:options.maxIter
 
     %Do exact line search in step direction deltaRho to find step size
     optimOptions = optimset('TolX',options.linearSearchPrecision);
-    stepSize = fminbnd(@(t)primalf(rho+t*deltaRho,keyProj,krausOps),options.linearSearchMinStep,1,optimOptions);
+    stepSize = fminbnd(@(t)primalf(rho+t*deltaRho,keyProj,krausOps,alpha),options.linearSearchMinStep,1,optimOptions);
 
     %Calculate the gap as a measure on the suboptimality of the FW
     %iteration
     gap = -real(trace(gradf*deltaRho)); %now in numerator convention
     %Corresponding function value at new point
-    f1 = primalf(rho+stepSize*deltaRho,keyProj,krausOps);
+    f1 = primalf(rho+stepSize*deltaRho,keyProj,krausOps, alpha);
 
     if options.verboseLevel>= 1
         tFW = toc(tstartFW);
@@ -107,7 +108,7 @@ for iter = 1:options.maxIter
         break;
     end
     fval = f1;
-
+    
 end
 
 %Write the current gap and number of iterations it took to solve
@@ -134,7 +135,7 @@ end
 %% Closest Density Matrix *************************************************
 function [rho, cvxStatus] = closestDensityMatrix(rho0,eqCons,ineqCons,vec1NormCons,mat1NormCons,options)
 
-%Retrieving constarints from params
+%Retrieving constraints from params
 linConTol = options.linearConstraintTolerance;
 
 dim = size(rho0,1);
@@ -150,15 +151,15 @@ if options.blockDiagonal
     P = options.blockP;
     newDims = options.newDims.';    
 
-    rhoStrings = compose("rho%1d(%d,%d)",(1:numel(newDims)).',newDims,newDims);
+    rhoStrings = convertStringsToChars(compose("rho%1d(%d,%d)",...
+        [1:numel(newDims)].',newDims,newDims));
     % CVX MUST generates variables in this work space. We have to do each
     % separately.
     for index = 1:numel(rhoStrings)
-        variable(convertStringsToChars(rhoStrings(index)),'hermitian','semidefinite')
+        variable(rhoStrings{index},'hermitian','semidefinite')
     end
     % Get a single cell array to capture those variables.
-    rhoBlocksString = "{"+strjoin(compose("rho%d",1:numel(newDims)),",")+"}";
-    rhoBlocks = eval(rhoBlocksString);
+    rhoBlocks = eval("{"+strjoin(compose("rho%d",1:numel(newDims)),",")+"}");
     
 
     % there is a bug in cvx's blkdiag override that messes up some times.
@@ -193,7 +194,6 @@ cvx_end
 % reconstruct rho from blocks incase it didn't get filled in by CVX
 if options.blockDiagonal
     rho = zeros(dim);
-    rhoBlocks = eval(rhoBlocksString);
     rho = directSumWorkArround(rho, rhoBlocks);
     rho = P'*rho*P;
 end
@@ -222,15 +222,15 @@ if options.blockDiagonal
     P = options.blockP;
     newDims = options.newDims.';    
 
-    deltaRhoStrings = compose("deltaRho%1d(%d,%d)",(1:numel(newDims)).',newDims,newDims);
+    deltaRhoStrings = convertStringsToChars(compose("deltaRho%1d(%d,%d)",...
+        [1:numel(newDims)].',newDims,newDims));
     % CVX MUST generates variables in this work space. We have to do each
     % separately.
     for index = 1:numel(deltaRhoStrings)
-        variable(convertStringsToChars(deltaRhoStrings(index)),'hermitian') %NOT semidefinite
+        variable(deltaRhoStrings{index},'hermitian') %NOT semidefinite
     end
     % Get a single cell array to capture those variables.
-    deltaRhoBlocksString = "{"+strjoin(compose("deltaRho%d",1:numel(newDims)),",")+"}";
-    deltaRhoBlocks = eval(deltaRhoBlocksString);
+    deltaRhoBlocks = eval("{"+strjoin(compose("deltaRho%d",1:numel(newDims)),",")+"}");
     
 
     % there is a bug in cvx's blkdiag override that messes up some times.
@@ -258,7 +258,6 @@ cvx_end
 % reconstruct rho from blocks incase it didn't get filled in by CVX
 if options.blockDiagonal
     deltaRho = zeros(dim);
-    deltaRhoBlocks = eval(deltaRhoBlocksString);
     deltaRho = directSumWorkArround(deltaRho, deltaRhoBlocks);
     deltaRho = P'*deltaRho*P;
 end

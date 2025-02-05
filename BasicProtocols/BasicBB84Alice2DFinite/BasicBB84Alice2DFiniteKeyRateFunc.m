@@ -68,56 +68,36 @@ modParser.addRequiredParam("krausOps", @isCPTNIKrausOps);
 modParser.addRequiredParam("keyProj", @(x) mustBeAKeyProj(x));
 
 
-modParser.addRequiredParam("dimA",...
-    @isscalar,...
-    @mustBeInteger,...
-    @mustBePositive);
-modParser.addRequiredParam("dimB",...
-    @isscalar,...
-    @mustBeInteger,...
-    @mustBePositive);
+modParser.addRequiredParam("dimA",@mustBeInteger);
+modParser.addRequiredParam("dimB", @mustBeInteger);
+modParser.addAdditionalConstraint(@mustBePositive,"dimA")
+modParser.addAdditionalConstraint(@mustBePositive,"dimB")
 modParser.addAdditionalConstraint(@observablesAndDimensionsMustBeTheSame,["observablesJoint","dimA","dimB"])
 
 modParser.addRequiredParam("announcementsA")
 modParser.addRequiredParam("announcementsB")
 modParser.addRequiredParam("keyMap",@(x)mustBeA(x,"KeyMapElement"))
 
-modParser.addRequiredParam("fEC", ...
-    @isscalar, ...
-    @(x) mustBeGreaterThanOrEqual(x,1));
+modParser.addRequiredParam("fEC", @(x) mustBeGreaterThanOrEqual(x,1));
 modParser.addOptionalParam("rhoA", nan, @(x) isequaln(x,nan) || isDensityOperator(x));
-modParser.addRequiredParam("alphabetSize", ...
-    @isscalar, ...
-    @mustBePositive, ...
-    @mustBeInteger);
+modParser.addRequiredParam("alphabetSize", @(x) mustBeInteger(x));
 
-
+%add loss parameter
+modParser.addRequiredParam("transmittance", @(x) mustBeGreaterThanOrEqual(x,0));
 
 %% finite key analysis parameters
-modParser.addRequiredParam("numSignals", ...
-    @isscalar, ...
-    @mustBePositive);
-modParser.addRequiredParam("pTest", ...
-    @isscalar, ...
-    @(x) mustBeInRange(x, 0, 1));
+modParser.addRequiredParam("numSignals", @(x) mustBeGreaterThan(x, 0));
+modParser.addRequiredParam("pTest", @(x) mustBeInRange(x, 0, 1));
+modParser.addRequiredParam("misalignmentAngle", @(x) mustBeGreaterThanOrEqual(x,0));
 
-modParser.addRequiredParam("epsilonBar", ...
-    @isscalar, ...
-    @mustBePositive);
-modParser.addRequiredParam("epsilonPE", ...
-    @isscalar, ...
-    @mustBePositive);
-modParser.addRequiredParam("epsilonEC", ...
-    @isscalar, ...
-    @mustBePositive);
-modParser.addRequiredParam("epsilonPA", ...
-    @isscalar, ...
-    @mustBePositive);
+modParser.addRequiredParam("epsilonBar", @(x) mustBeGreaterThan(x,0));
+modParser.addRequiredParam("epsilonPE", @(x) mustBeGreaterThan(x,0));
+modParser.addRequiredParam("epsilonEC", @(x) mustBeGreaterThan(x,0));
+modParser.addRequiredParam("epsilonPA", @(x) mustBeGreaterThan(x,0));
+modParser.addRequiredParam("pz", @(x) mustBeInRange(x,0,1));
+modParser.addRequiredParam("alpha", @(x) mustBeGreaterThan(x,1));
 
-
-modParser.addRequiredParam("tExp", ...
-    @isscalar, ...
-    @mustBeNonpositive);
+modParser.addRequiredParam("tExp", @(x)  mustBeLessThanOrEqual(x, 0) );
 
 
 modParser.addOptionalParam("blockDimsA", nan);
@@ -176,6 +156,7 @@ mathSolverInput.vectorOneNormConstraints = VectorOneNormConstraint(params.observ
 mathSolverInput.krausOps = params.krausOps;
 mathSolverInput.keyProj = params.keyProj;
 mathSolverInput.rhoA = params.rhoA;
+mathSolverInput.alpha = params.alpha;
 
 % if block diag information was give, then pass it to the solver.
 if ~isequaln(params.blockDimsA,nan)
@@ -188,13 +169,13 @@ end
 [relEnt,~] = mathSolverFunc(mathSolverInput, debugMathSolver);
 
 keyRate = finiteKeyRate(relEnt, deltaLeak, params.alphabetSize, 1-params.pTest, ...
-    params.epsilonBar, params.epsilonPA, params.epsilonEC, params.numSignals);
+    params.epsilonBar, params.epsilonPA, params.epsilonEC, params.numSignals,params.pz, params.alpha);
 
 if isfield(debugMathSolver.info,"relEntStep2Linearization")
     relEntStep2Linearization = debugMathSolver.info.relEntStep2Linearization; 
     
     keyRateStep2Linearization = finiteKeyRate( relEntStep2Linearization, deltaLeak, ...
-        params.alphabetSize, 1-params.pTest, params.epsilonBar, params.epsilonPA, params.epsilonEC, params.numSignals);
+        params.alphabetSize, 1-params.pTest, params.epsilonBar, params.epsilonPA, params.epsilonEC, params.numSignals,params.pz, params.alpha);
     if options.verboseLevel>=2
         fprintf("Key rate using step 2 linearization intial value: %e\n",max(keyRateStep2Linearization,0))
     end
@@ -220,16 +201,25 @@ end
 
 %%%%%%%%%%%  FINITE SIZE CODE %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function [keyRate] = finiteKeyRate(relEnt, deltaLeak, alphabetSize, pGen, epsilonBar, epsilonPA, epsilonEC, numSignals)
+function [keyRate] = finiteKeyRate(relEnt, deltaLeak, alphabetSize, pGen, epsilonBar, epsilonPA, epsilonEC, numSignals, pz, alpha)
 %computes the finite size keyrate.
 % based on Phys. Rev. Research 3, 013274 .
 
 NKey = pGen*numSignals; %number of rounds for key generation
 
-AEPTerm = ( sqrt(NKey) / numSignals ) *2*log2(alphabetSize+3)*sqrt(1-log2(epsilonBar));
-privacyAmplification = (1/NKey)*2*(log2(2/epsilonPA));
+% AEPTerm = ( sqrt(NKey) / numSignals ) *2*log2(alphabetSize+3)*sqrt(1-log2(epsilonBar));
+% privacyAmplification = (1/NKey)*2*(log2(1/(2*epsilonPA)));
+% ECLeakage = pGen*deltaLeak + log2(ceil(1/epsilonEC))/numSignals; 
+
+% keyRate = pGen*relEnt - AEPTerm - ECLeakage - privacyAmplification; 
+
+
+%For Renyi entropy
 ECLeakage = pGen*deltaLeak + log2(ceil(1/epsilonEC))/numSignals; 
+correction = (alpha/(numSignals*(alpha-1)))*(log2(1/epsilonPA))+ECLeakage;
+keyRate = pGen*relEnt + 2/numSignals - correction;
+if keyRate < 0
+    keyRate = 0;
+end
 
-
-keyRate = pGen*relEnt - AEPTerm - ECLeakage - privacyAmplification; 
 end

@@ -1,4 +1,4 @@
-function qkdInput = BasicBB84Alice2DFinitePreset()
+function qkdInput = BasicBB84Alice2DFinitePresetOpt(alpha)
 % BasicBB84Alice2DFinitePreset A preset for BB84 with qubits, for
 % finite-size keyrates based upon Phys. Rev. Research 3, 013274
 
@@ -7,18 +7,19 @@ qkdInput = QKDSolverInput();
 %% Parameters
 
 %Add loss
-% lossdB = linspace(0,17,36);
-qkdInput.addScanParameter("alpha",num2cell(linspace(1.01,1.5,50)));
-% transmittance = 10.^(-lossdB/10);
-% qkdInput.addScanParameter("transmittance", num2cell(transmittance));
+lossdB = linspace(0,0,1);
+transmittance = 10.^(-lossdB/10);
+qkdInput.addScanParameter("transmittance", num2cell(transmittance));
 
-%qkdInput.addScanParameter("numSignals",num2cell(10.^linspace(4,15,12)));
+% qkdInput.addScanParameter("numSignals",num2cell(10.^linspace(5,8,4)));
+%qkdInput.addScanParameter("misalignmentAngle", num2cell(pi/180*linspace(0,5,6)) );
 qkdInput.addFixedParameter("pz",1/2);
 qkdInput.addFixedParameter("fEC",1.2); %efficiency of error-correction.
 
 qkdInput.addFixedParameter("depolarization",0.01);
-qkdInput.addFixedParameter("transmittance",1);
-% qkdInput.addFixedParameter("alpha",  1.002);
+% qkdInput.addFixedParameter("transmittance",0);
+
+qkdInput.addFixedParameter("alpha", alpha);
 
 
 %finite size parameters.
@@ -34,7 +35,7 @@ qkdInput.addFixedParameter("epsilonBar",(1/4)*1e-8);% smoothing epsilon
 
 
 
-qkdInput.addFixedParameter("numSignals",1e5); %total number of signals
+qkdInput.addFixedParameter("numSignals",3e5); %total number of signals
 qkdInput.addFixedParameter("misalignmentAngle", 0); %pi*8.1301/180
 qkdInput.addFixedParameter("pTest", 0.2); %m=pTest*numSignals used for testing
 
@@ -49,13 +50,13 @@ qkdInput.addFixedParameter("tExp", -7);
 
 
 % description is the same as the asymptotic qubit BB84
-%descriptionModule = QKDDescriptionModule(@BasicBB84Alice2DDescriptionFunc);
+% descriptionModule = QKDDescriptionModule(@BasicBB84Alice2DDescriptionFunc);
 descriptionModule = QKDDescriptionModule(@BasicBB84LossyDescriptionFunc);
 qkdInput.setDescriptionModule(descriptionModule);
 
 % channel model 
 
-%channelModule = QKDChannelModule(@BasicBB84Alice2DChannelFunc);
+% channelModule = QKDChannelModule(@BasicBB84Alice2DChannelFunc);
 channelModule = QKDChannelModule(@BasicBB84LossyChannelFunc);
 qkdInput.setChannelModule(channelModule);
     
@@ -71,11 +72,11 @@ qkdInput.setOptimizerModule(optimizerMod);
 mathSolverOptions = struct();
 mathSolverOptions.initMethod = 1;
 mathSolverOptions.maxIter = 10;
-mathSolverOptions.maxGap = 1e-10;
-mathSolverOptions.linearConstraintTolerance = 1e-7;
-mathSolverOptions.blockDiagonal = true;
+mathSolverOptions.maxGap = 1e-6;
+mathSolverOptions.blockDiagonal = false;
 mathSolverMod = QKDMathSolverModule(@FW2StepSolver,mathSolverOptions,mathSolverOptions);
 qkdInput.setMathSolverModule(mathSolverMod);
 
 % global options
 qkdInput.setGlobalOptions(struct("errorHandling",3,"verboseLevel",1,"cvxSolver","mosek","cvxPrecision","high"));
+

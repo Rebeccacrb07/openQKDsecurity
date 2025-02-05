@@ -55,10 +55,14 @@ function [relEntLowerBound,modParser] = FW2StepSolver(params,options,debugInfo)
 % * verboseLevel (global option): See makeGlobalOptionsParser for details.
 % * maxIter (20): maximum number of Frank Wolfe iteration steps taken to
 %   minimize the relative entropy.
-% * maxGap (1e-6): Exit condition for the Frank Wolfe algithm. When the
-%   relative gap between the current and previous iteration is small
-%   enough, the Frank wolfe algorithm exits and returns the current point.
-%   The gap must be a postive scalar.
+% * maxGapCriteria (true): Controls the method to determine when the Frank
+%   Wolfe algorithm should stop. For maxGapCriteria = true, the gap is
+%   determined by the size of the step in the direction of the gradient of
+%   the relative entropy, scaled by the length of the gradient. For
+%   maxGapCriteria = false, the gap is given by the difference in relative
+%   entropy between each step.
+% * maxGap (1e-5): non-negative value for the maximum gap criteria given
+%   above.
 % * linearSearchPrecision (1e-20): Precision the fminbnd tries to achieve
 %   when searching along the line between the current point and the points
 %   along the gradient line. See fminbnd and optimset for more details.
@@ -68,9 +72,7 @@ function [relEntLowerBound,modParser] = FW2StepSolver(params,options,debugInfo)
 %   more details (the second argument, x1, in the function).
 % * linearConstraintTolerance (1e-10): constraint tolerance on the
 %   equalityConstraints, inequalityConstraints, vectorOneNormConstraints
-%   and matrixOneNormConstraints for step 1 of the solver. This is to help
-%   the solver find feasible points during step 1 and play no role in step
-%   2.
+%   and matrixOneNormConstraints. A bit broader than the name suggests.
 % * initMethod (1): Integer selected from {1,2,3}. For the Frank Wolfe
 %   algorithm, the initial point must satisfy the constraints. This selects
 %   which technique is used, from 3 choices:
@@ -114,28 +116,14 @@ end
 %start with the global parser and add on the extra options
 optionsParser = makeGlobalOptionsParser(mfilename);
 
-optionsParser.addOptionalParam("maxIter",20,...
-    @isscalar,...
-    @mustBePositive,...
-    @mustBeInteger);
-optionsParser.addOptionalParam("maxGap",1e-6,...
-    @isscalar,...
-    @mustBePositive);
-optionsParser.addOptionalParam("linearSearchPrecision",1e-20, ...
-    @isscalar, ...
-    @mustBePositive);
-optionsParser.addOptionalParam("linearSearchMinStep",1e-3, ...
-    @isscalar, ...
-    @(x) mustBeInRange(x,0,1));
-optionsParser.addOptionalParam("linearConstraintTolerance",1e-10, ...
-    @isscalar, ...
-    @mustBePositive);
-optionsParser.addOptionalParam("initMethod",1, ...
-    @isscalar, ...
-    @(x) mustBeMember(x,[1,2,3]));
-optionsParser.addOptionalParam("blockDiagonal", false, ...
-    @isscalar, ...
-    @(x) mustBeMember(x, [true, false]));
+optionsParser.addOptionalParam("maxIter",20,@mustBeInteger);
+optionsParser.addAdditionalConstraint(@(x) x>0, "maxIter");
+optionsParser.addOptionalParam("maxGap",1e-5,@(x) x>0);
+optionsParser.addOptionalParam("linearSearchPrecision",1e-20,@(x) x>0);
+optionsParser.addOptionalParam("linearSearchMinStep",1e-3,@(x) 0<=x && x<=1);
+optionsParser.addOptionalParam("linearConstraintTolerance",1e-30,@(x) x>0);
+optionsParser.addOptionalParam("initMethod",1,@(x) mustBeMember(x,[1,2,3]));
+optionsParser.addOptionalParam("blockDiagonal", false, @(x) mustBeMember(x, [true, false]));
 optionsParser.parse(options);
 
 options = optionsParser.Results;
@@ -145,8 +133,13 @@ options = optionsParser.Results;
 modParser = moduleParser(mfilename);
 
 % kraus operators for G map and key projection operators for Z map
-modParser.addRequiredParam("krausOps",@isCPTNIKrausOps);
-modParser.addRequiredParam("keyProj",@mustBeAKeyProj);
+modParser.addRequiredParam("krausOps",@mustBeNonempty);
+modParser.addAdditionalConstraint(@isCPTNIKrausOps,"krausOps");
+modParser.addRequiredParam("keyProj",@mustBeNonempty);
+modParser.addAdditionalConstraint(@mustBeAKeyProj,"keyProj");
+modParser.addRequiredParam("alpha", @(x) mustBeGreaterThan(x,1));
+
+
 
 %same dimension for matrix multiplication
 modParser.addAdditionalConstraint(@(x,y)size(x{1},1) == size(y{1},2),["krausOps","keyProj"])
@@ -214,13 +207,16 @@ if ~isnan(params.rhoA) % make sure rhoA was given
     % determine the dimensions of A and B
     dimA = size(params.rhoA, 1);
     dimB = size(params.krausOps{1}, 2)/dimA;
-    rhoAEqualityConstraints = makeRhoAConstraints(params.rhoA,dimB);
+    [rhoAEqualityConstraints, rhoAVecConstraints] = makeRhoAConstraints(params.rhoA,dimB);
 
     % adding Tr[rho] == 1 constraint explicitly for stability.
     trace1Constraint = EqualityConstraint(eye(dimA*dimB),1);
+    trace1VecConstraint = trace1Constraint.convert2VectorOneNorm;
 
     % append the new constraints onto the list of equality constraints.
-    eqCons = [eqCons(:); rhoAEqualityConstraints(:);trace1Constraint];
+    % eqCons = [eqCons(:); rhoAEqualityConstraints(:);trace1Constraint];
+    vec1NormCons = [vec1NormCons(:); rhoAVecConstraints; trace1VecConstraint];
+    
 end
 
 
@@ -240,7 +236,7 @@ end
 
 % run step 1 routines
 [rho,relEntStep1,~] = step1Solver(rho0,eqCons,ineqCons,...
-    vec1NormCons,mat1NormCons,params.krausOps,params.keyProj,options,debugInfo);
+    vec1NormCons,mat1NormCons,params.krausOps,params.keyProj,params.alpha,options,debugInfo);
 
 relEntStep1 = relEntStep1/log(2);
 debugInfo.storeInfo("relEntStep1",relEntStep1);
@@ -253,7 +249,10 @@ epsilonForInitialPoint = perturbationChannelEpsilon(rho,0,"perturbationCheck",fa
 rho = perturbationChannel(rho,epsilonForInitialPoint);
 
 relEntLowerBound = step2Solver(rho,eqCons,ineqCons,vec1NormCons,...
-    mat1NormCons,params.krausOps,params.keyProj,options,debugInfo);
+    mat1NormCons,params.krausOps,params.keyProj,params.alpha,options,debugInfo);
+
+%return the step 1 rel ent
+% relEntLowerBound = relEntStep1;
 
 %convert back to bits.
 relEntLowerBound = relEntLowerBound/log(2);
@@ -261,7 +260,7 @@ debugInfo.storeInfo("relEntLowerBound",relEntLowerBound);
 end
 
 %% Function for adding rhoA constraints
-function rhoAEqualityConstraints = makeRhoAConstraints(rhoA,dimB)
+function [rhoAEqualityConstraints,rhoAVecConstraints] = makeRhoAConstraints(rhoA,dimB)
 
 dimA = size(rhoA,1);
 
@@ -269,5 +268,5 @@ obsFun = @(x) kron(x,eye(dimB)); %construct observables for rhoA
 expFun = @(x) trace(x'*rhoA); % construct expectation values for rhoA
 
 rhoAEqualityConstraints = cellfun(@(op)EqualityConstraint(obsFun(op),expFun(op)),hermitianBasis(dimA));
-
+rhoAVecConstraints = cellfun(@(op)EqualityConstraint(obsFun(op),expFun(op)).convert2VectorOneNorm,hermitianBasis(dimA));
 end

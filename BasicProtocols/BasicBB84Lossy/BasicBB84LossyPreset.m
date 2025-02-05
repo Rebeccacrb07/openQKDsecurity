@@ -15,10 +15,10 @@ qkdInput.addFixedParameter("misalignmentAngle",0);
 %qkdInput.addScanParameter("misalignmentAngle",num2cell(linspace(0,pi/4,11)));
 
 %Add depolarization
-qkdInput.addFixedParameter("depolarization", 0);
+qkdInput.addFixedParameter("depolarization", 0.01);
 
 %Add loss
-lossdB = linspace(0,40,10);
+lossdB = linspace(0,100,10);
 transmittance = 10.^(-lossdB/10);
 qkdInput.addScanParameter("transmittance", num2cell(transmittance));
 

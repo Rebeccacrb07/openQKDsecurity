@@ -1,4 +1,4 @@
-function fval = primalf(rho,keyProj,krausOperators)
+function fval = primalf(rho,keyProj,krausOperators, alpha)
 % primalf Computes the primal objective function $f(\rho) := 
 % D(\mathcal{G}(\rho)||\mathcal{Z}(\mathcal{G}(\rho)))$
 %
@@ -19,6 +19,7 @@ arguments
     rho (:,:) double {mustBeHermitian}
     keyProj (:,1) cell
     krausOperators (:,1) cell
+    alpha (1,1) double
 end
 
 gRho = ApplyMap(rho,krausOperators);
@@ -30,8 +31,13 @@ pertZ = perturbationChannelEpsilon(zRho,"perturbationCheck",false);
 
 perturbation = max(pertG,pertZ);
 
+if perturbation>1
+    perturbation = 1;
+end
+
 gRho=perturbationChannel(gRho,perturbation);
 zRho=perturbationChannel(zRho,perturbation);
 
-fval = real(trace(gRho*(logm(gRho)-logm(zRho)))); % calculate the quantum relative entropy
+% fval = real(trace(gRho*(logm(gRho)-logm(zRho)))); % calculate the quantum relative entropy
+fval = real(RenyiEntropy(alpha, gRho, zRho));
 end

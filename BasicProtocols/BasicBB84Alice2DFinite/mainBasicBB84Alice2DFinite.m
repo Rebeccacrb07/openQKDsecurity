@@ -1,5 +1,4 @@
 %pick the preset file 
-
 qkdInput = BasicBB84Alice2DFinitePreset();
 
 %run the QKDSolver with this input

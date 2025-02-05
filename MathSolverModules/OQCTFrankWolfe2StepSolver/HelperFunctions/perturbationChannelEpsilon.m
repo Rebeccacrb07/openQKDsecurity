@@ -42,10 +42,13 @@ if eigMin<=minEigenvalue
     end
 
     epsilon = dim*(minEigenvalue-eigMin)/(real(trace(rho))-eigMin*dim);
-    %check
-    if options.perturbationCheck && (epsilon < 0 || epsilon > 1)
-        throw(MException("perturbationCHannelEpsilon:UnphysicalPerturbation", ...
-            "The perturbation parameter calculated was not in the range [0,1]."))
+    try
+        %check 
+        if options.perturbationCheck
+            mustFollowPerturbationTheorem(epsilon,rho);
+        end
+    catch ME
+        rethrow(ME)
     end
 end
 
