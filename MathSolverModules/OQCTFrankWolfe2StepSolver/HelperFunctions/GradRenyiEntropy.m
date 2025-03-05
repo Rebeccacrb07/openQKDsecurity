@@ -1,11 +1,11 @@
 function grad_renyi = GradRenyiEntropy(alpha,gRho,zRho,krausOp,keyProj)
 
-beta = (2-1/alpha)^(-1);
 Sz = size(gRho);
+beta = 1/alpha;
+Trace = trace((gRho^beta)*zRho^(1-beta));
 
-
-mu = (1-beta)/(2*beta);
-Trace = trace(((zRho^mu)*gRho*zRho^mu)^beta);
+% mu = (1-beta)/(2*beta);
+% Trace = trace(((zRho^mu)*gRho*zRho^mu)^beta);
 
 perturbation = zeros(size(gRho));
 for i = 1:Sz(1)
